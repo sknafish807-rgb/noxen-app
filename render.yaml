@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: noxen-app
+    runtime: python
+    buildCommand: pip install -r requirements.txt && clang++ cpp/noxen_core.cpp -o cpp/noxen_core
+    startCommand: gunicorn app:app
+    plan: free
