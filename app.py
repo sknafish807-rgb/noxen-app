@@ -509,7 +509,7 @@ def worker_login():
         conn.close()
 
         if worker:
-            return redirect("/worker/dashboard?mobile=" + mobile)
+            return redirect("/worker/dashboard?worker_id=" + str(worker[0]))
 
         return """
         <h3>Worker not found</h3>
