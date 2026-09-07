@@ -2,3 +2,7 @@ __pycache__/
 *.db
 app.p
 app_backup*.py
+
+*.class
+cpp/noxen_core
+cpp/noxen_bridge
