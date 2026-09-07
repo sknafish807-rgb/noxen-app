@@ -1,6 +1,32 @@
 from flask import Flask, render_template, request, session, redirect, url_for
 import sqlite3
 
+import subprocess
+
+def run_cpp_core(message):
+    try:
+        result = subprocess.run(
+            ["./cpp/noxen_core", message],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        return result.stdout.strip()
+    except Exception as e:
+        return "C++ Core Error: " + str(e)
+
+def run_java_core(message):
+    try:
+        result = subprocess.run(
+            ["java", "-cp", "java", "NoxenCore", message],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        return result.stdout.strip()
+    except Exception as e:
+        return "Java Core Error: " + str(e)
+
 app = Flask(__name__)
 app.secret_key = "NOXEN_CHANGE_THIS_SECRET_KEY"
 DATABASE = "noxen.db"
@@ -42,6 +68,41 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+@app.route("/core-status")
+def core_status():
+    cpp = run_cpp_core("Connected")
+    java = run_java_core("Connected")
+
+    return f"""
+    <html>
+    <head>
+        <title>NOXEN Core Status</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                background: #111827;
+                color: white;
+                padding: 30px;
+            }}
+            .box {{
+                background: #1f2937;
+                padding: 20px;
+                margin: 15px 0;
+                border-radius: 15px;
+            }}
+        </style>
+    </head>
+    <body>
+        <h1>🚀 NOXEN Core Status</h1>
+
+        <div class="box">🐍 Python / Flask — ✅ Connected</div>
+        <div class="box">⚙️ C++ Core — ✅ {cpp}</div>
+        <div class="box">☕ Java Core — ✅ {java}</div>
+    </body>
+    </html>
+    """
 
 @app.route("/")
 def home():
