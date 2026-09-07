@@ -5,8 +5,8 @@ app = Flask(__name__)
 app.secret_key = "NOXEN_CHANGE_THIS_SECRET_KEY"
 DATABASE = "noxen.db"
 
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "noxen123"
+ADMIN_USERNAME = "NOXENN"
+ADMIN_PASSWORD = "Khan@848033"
 
 def add_booking_status():
     conn = sqlite3.connect(DATABASE)
@@ -207,8 +207,8 @@ def worker():
         conn = sqlite3.connect(DATABASE)
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO workers (name, mobile, skill, address) VALUES (?, ?, ?, ?)",
-            (name, mobile, skill, address)
+            "INSERT INTO workers (name, mobile, skill, address, status) VALUES (?, ?, ?, ?, ?)",
+            (name, mobile, skill, address, "Pending")
         )
         worker_id = cursor.lastrowid
         conn.commit()
@@ -331,6 +331,27 @@ def accept_booking(booking_id):
 
     return redirect(url_for("admin"))
 
+@app.route("/admin/worker/<int:worker_id>/<action>", methods=["POST"])
+def manage_worker(worker_id, action):
+    if not session.get("admin_logged_in"):
+        return redirect(url_for("admin_login"))
+
+    if action not in ["approve", "reject"]:
+        return "Invalid action", 400
+
+    status = "Approved" if action == "approve" else "Rejected"
+
+    conn = sqlite3.connect(DATABASE)
+    conn.execute(
+        "UPDATE workers SET status = ? WHERE id = ?",
+        (status, worker_id)
+    )
+    conn.commit()
+    conn.close()
+
+    return redirect("/admin")
+
+
 @app.route("/admin")
 def admin():
     if not session.get("admin_logged_in"):
@@ -360,6 +381,15 @@ def admin():
             <td>{b['mobile']}</td>
             <td>{b['address']}</td>
             <td>{b['status']}</td>
+            <td>
+                <form method="POST" action="/admin/booking/{b['id']}/assign/" style="display:flex;gap:5px;align-items:center;">
+                    <select name="worker_id" required>
+                        <option value="">Select Worker</option>
+                        {''.join(f'<option value="{w["id"]}">{w["name"]} - {w["skill"]}</option>' for w in workers if w["status"] == "Approved")}
+                    </select>
+                    <button type="submit">Assign</button>
+                </form>
+            </td>
         </tr>
         """
 
@@ -380,6 +410,15 @@ def admin():
             <td>{w['mobile']}</td>
             <td>{w['skill']}</td>
             <td>{w['address']}</td>
+            <td>{w['status']}</td>
+            <td>
+                <form method="POST" action="/admin/worker/{w['id']}/approve" style="display:inline">
+                    <button type="submit">✅ Approve</button>
+                </form>
+                <form method="POST" action="/admin/worker/{w['id']}/reject" style="display:inline">
+                    <button type="submit">❌ Reject</button>
+                </form>
+            </td>
         </tr>
         """
 
@@ -478,6 +517,61 @@ def admin_logout():
 init_db()
 
 
+@app.route("/admin/booking/<int:booking_id>/assign/", methods=["POST"])
+def assign_booking(booking_id):
+    if not session.get("admin_logged_in"):
+        return redirect(url_for("admin_login"))
+
+    worker_id = request.form.get("worker_id")
+
+    conn = sqlite3.connect(DATABASE)
+
+    worker = conn.execute(
+        "SELECT id FROM workers WHERE id = ? AND status = 'Approved'",
+        (worker_id,)
+    ).fetchone()
+
+    if not worker:
+        conn.close()
+        return "Worker is not approved", 400
+
+    conn.execute(
+        "UPDATE bookings SET worker_id = ? WHERE id = ?",
+        (worker_id, booking_id)
+    )
+
+    conn.commit()
+    conn.close()
+
+    return redirect("/admin")
+
+
+
+    if not session.get("admin_logged_in"):
+        return redirect(url_for("admin_login"))
+
+    conn = sqlite3.connect(DATABASE)
+
+    worker = conn.execute(
+        "SELECT id FROM workers WHERE id = ? AND status = 'Approved'",
+        (worker_id,)
+    ).fetchone()
+
+    if not worker:
+        conn.close()
+        return "Worker is not approved", 400
+
+    conn.execute(
+        "UPDATE bookings SET worker_id = ? WHERE id = ?",
+        (worker_id, booking_id)
+    )
+
+    conn.commit()
+    conn.close()
+
+    return redirect("/admin")
+
+
 @app.route("/worker/update/<int:booking_id>/<status>")
 def update_booking_status(booking_id, status):
     allowed = ["Pending", "Accepted", "Rejected", "Completed"]
@@ -485,15 +579,31 @@ def update_booking_status(booking_id, status):
     if status not in allowed:
         return "Invalid status", 400
 
+    worker_id = request.args.get("worker_id")
+
+    if not worker_id:
+        return "Worker login required", 401
+
     conn = sqlite3.connect(DATABASE)
+
+    booking = conn.execute(
+        "SELECT id FROM bookings WHERE id = ? AND worker_id = ?",
+        (booking_id, worker_id)
+    ).fetchone()
+
+    if not booking:
+        conn.close()
+        return "This booking is not assigned to you", 403
+
     conn.execute(
-        "UPDATE bookings SET status = ? WHERE id = ?",
-        (status, booking_id)
+        "UPDATE bookings SET status = ? WHERE id = ? AND worker_id = ?",
+        (status, booking_id, worker_id)
     )
+
     conn.commit()
     conn.close()
 
-    return redirect("/worker/dashboard")
+    return redirect("/worker/dashboard?worker_id=" + str(worker_id))
 
 
 @app.route("/worker/login", methods=["GET", "POST"])
@@ -509,7 +619,17 @@ def worker_login():
         conn.close()
 
         if worker:
-            return redirect("/worker/dashboard?worker_id=" + str(worker[0]))
+            if len(worker) >= 6 and worker[5] == "Approved":
+                return redirect("/worker/dashboard?worker_id=" + str(worker[0]))
+
+            status = worker[5] if len(worker) >= 6 else "Pending"
+
+            return f"""
+            <h3>⏳ Worker Approval Pending</h3>
+            <p>Your current status: <b>{status}</b></p>
+            <p>Owner approval ke baad aap login kar sakte hain.</p>
+            <a href="/worker/login">Try Again</a>
+            """
 
         return """
         <h3>Worker not found</h3>
